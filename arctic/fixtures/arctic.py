@@ -1,6 +1,8 @@
+import base64
 import getpass
 import logging
 
+import bson
 import pytest as pytest
 
 from .. import arctic as m
@@ -32,6 +34,123 @@ def arctic(mongo_server):
 def arctic_secondary(mongo_server, arctic):
     arctic = m.Arctic(mongo_host=mongo_server.api, allow_secondary=True)
     return arctic
+
+
+@pytest.fixture(scope="function")
+def ndarray_store_with_uncompressed_write(mongo_server):
+    """
+    The database state created by this fixture is equivalent to the following operations using arctic 1.40
+    or previous:
+
+        arctic.initialize_library('arctic_test.TEST', m.VERSION_STORE, segment='month')
+        library = arctic.get_library('arctic_test.TEST')
+        arr = np.arange(2).astype([('abc', 'int64')])
+        library.write('MYARR', arr[:1])
+        library.write('MYARR', arr)
+
+    different from newer versions, the last write creates a uncompressed chunk.
+    """
+    mongo_server.api.drop_database('arctic_test')
+
+    library_name = 'arctic_test.TEST'
+    arctic = m.Arctic(mongo_host=mongo_server.api)
+    arctic.initialize_library(library_name, m.VERSION_STORE, segment='month')
+
+    db = mongo_server.api.arctic_test
+    db.TEST.insert_many([
+        {
+            "_id": bson.ObjectId("5ad0742ca0949de6727cf994"),
+            "segment": 0,
+            "sha": bson.Binary(base64.b64decode("Fk+quqPVSDfaajYJkOAvnDyXtGQ="), 0),
+            "symbol": "MYARR",
+            "data": bson.Binary(base64.b64decode("CAAAAIAAAAAAAAAAAA=="), 0),
+            "compressed": True,
+            "parent": [bson.ObjectId("5ad0742c5c911d4d80ee2ea3")]
+        },
+        {
+            "_id": bson.ObjectId("5ad0742ca0949de6727cf995"),
+            "sha": bson.Binary(base64.b64decode("eqpp8VOJBttTz0j5H+QGtOQ+r44="), 0),
+            "symbol": "MYARR",
+            "segment": 1,
+            "data": bson.Binary(base64.b64decode("AQAAAAAAAAA="), 0),
+            "compressed": False,
+            "parent": [bson.ObjectId("5ad0742c5c911d4d80ee2ea3")]
+        }
+    ])
+    db.TEST.ARCTIC.update_one({"_id": "ARCTIC_META"}, {"$set": {"_id": "ARCTIC_META", "TYPE": "VersionStore", "QUOTA": 10737418240}})
+    db.TEST.changes.insert_many([
+        {
+            "_id": bson.ObjectId("5ad0742c5c911d4d80ee2ea3"),
+            "append_count": 0,
+            "dtype_metadata": {},
+            "segment_count": 1,
+            "dtype": "[('abc', '<i8')]",
+            "symbol": "MYARR",
+            "up_to": 1,
+            "append_size": 0,
+            "sha": bson.Binary(base64.b64decode("Bf5AV1MWbxJVWefJrFWGVPEHx+k="), 0),
+            "shape": [-1],
+            "version": 1,
+            "base_sha": bson.Binary(base64.b64decode("Bf5AV1MWbxJVWefJrFWGVPEHx+k="), 0),
+            "type": "ndarray",
+            "metadata": None
+        },
+        {
+            "_id": bson.ObjectId("5ad0742c5c911d4d80ee2ea4"),
+            "append_count": 1,
+            "dtype_metadata": {},
+            "segment_count": 2,
+            "base_version_id": bson.ObjectId("5ad0742c5c911d4d80ee2ea3"),
+            "dtype": "[('abc', '<i8')]",
+            "symbol": "MYARR",
+            "up_to": 2,
+            "append_size": 8,
+            "sha": bson.Binary(base64.b64decode("Ax7oBxVFw1/9wKog2gfOLjbOVD8="), 0),
+            "shape": [-1],
+            "version": 2,
+            "base_sha": bson.Binary(base64.b64decode("Bf5AV1MWbxJVWefJrFWGVPEHx+k="), 0),
+            "type": "ndarray",
+            "metadata": None
+        }
+    ])
+    db.TEST.versions_nums.insert_one({"_id": bson.ObjectId("5ad0742ca0949de6727cf993"), "symbol": "MYARR", "version": 2})
+    db.TEST.versions.insert_many([
+        {
+            "_id": bson.ObjectId("5ad0742c5c911d4d80ee2ea3"),
+            "append_count": 0,
+            "dtype_metadata": {},
+            "segment_count": 1,
+            "dtype": "[('abc', '<i8')]",
+            "symbol": "MYARR",
+            "up_to": 1,
+            "append_size": 0,
+            "sha": bson.Binary(base64.b64decode("Bf5AV1MWbxJVWefJrFWGVPEHx+k="), 0),
+            "shape": [-1],
+            "version": 1,
+            "base_sha": bson.Binary(base64.b64decode("Bf5AV1MWbxJVWefJrFWGVPEHx+k="), 0),
+            "type": "ndarray",
+            "metadata": None
+        },
+        {
+            "_id": bson.ObjectId("5ad0742c5c911d4d80ee2ea4"),
+            "append_count": 1,
+            "dtype_metadata": {},
+            "segment_count": 2,
+            "base_version_id": bson.ObjectId("5ad0742c5c911d4d80ee2ea3"),
+            "dtype": "[('abc', '<i8')]",
+            "symbol": "MYARR",
+            "up_to": 2,
+            "append_size": 8,
+            "sha": bson.Binary(base64.b64decode("Ax7oBxVFw1/9wKog2gfOLjbOVD8="), 0),
+            "shape": [-1],
+            "version": 2,
+            "base_sha": bson.Binary(base64.b64decode("Bf5AV1MWbxJVWefJrFWGVPEHx+k="), 0),
+            "type": "ndarray",
+            "metadata": None
+        }
+    ])
+
+    return {'symbol': 'MYARR', 'store': arctic.get_library('arctic_test.TEST')}
 
 
 @pytest.fixture(scope="function")

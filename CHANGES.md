@@ -1,6 +1,8 @@
 ## Changelog
 
 ### 1.64
+  * Bugfix: #534 VersionStore: overwriting a symbol with different dtype (but same data format) does not
+                 raise exceptions anymore
   * Bugfix: #531 arctic_prune_versions: clean broken snapshot references before pruning
 
 ### 1.63 (2018-04-06)
